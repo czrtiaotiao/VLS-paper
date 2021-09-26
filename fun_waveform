@@ -1,0 +1,50 @@
+%% function for waveform of spikes
+%% for population neurons
+%% input
+% wave_all: waveforms from all units, n x 48 matrix
+
+%% output
+% peak_width: width of spike waveform peak; unit in msec
+% peakValley_width: spike width measured by time from spike Valley to spike peak; unit in msec
+
+%%
+function [peak_width, peakValley_width] = fun_waveform(wave_all)
+        if size(wave_all, 2) ~= 48
+            error('Your waveform data is not accepted by this program!\n Please refer to this program reference.');
+        end
+        WAVEFORM_SAMPLING_RATE = 30000;
+        INTER_POINT = 10;
+        
+        waveform_raw = wave_all;
+        waveform = spline(1: size(waveform_raw, 2), waveform_raw, 0: 1/ INTER_POINT: size(waveform_raw, 2));
+        [min_mV, min_I] = min(waveform, [], 2);
+        min_I_badind = find(min_I < 100 | min_I > 200);
+        min_I_good = min_I(min_I >= 100 & min_I <= 200);
+        start_ind = round(mean(min_I_good));
+        [~, max_I] = max(waveform(:, start_ind + 1: end), [], 2);
+        max_I = max_I + start_ind;
+        pre = min(min_I_good);
+        post = size(waveform, 2) - max(min_I_good);
+        waveform_aligned = zeros(size(waveform, 1), pre + post);
+        for i = 1: size(waveform, 1)
+            if i ~= min_I_badind
+                tmp = waveform(i, min_I(i) - pre + 1: min_I(i) + post);
+                waveform_aligned(i, :) = tmp/ abs(min_mV(i));
+            else
+                waveform_aligned(i, :) = nan;
+            end            
+        end
+        peakValley_width = (max_I - min_I)/ (WAVEFORM_SAMPLING_RATE* INTER_POINT)* 1000;
+        peakValley_width(min_I_badind) = nan;        
+        peak_width = zeros(size(waveform, 1), 1);
+        half_peak = max(waveform_aligned(:, pre: end), [], 2)* 1/ 2;
+        for i = 1: length(peak_width)
+            if i ~= min_I_badind
+                peak_width(i) = find(waveform_aligned(i, pre: end) > half_peak(i), 1, 'last')...
+                    - find(waveform_aligned(i, pre: end) > half_peak(i), 1, 'first');
+                peak_width(i) = peak_width(i)/ (WAVEFORM_SAMPLING_RATE* INTER_POINT)* 1000;
+            else
+                peak_width(i) = nan;
+            end
+        end                
+end

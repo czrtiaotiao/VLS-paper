@@ -1,0 +1,47 @@
+%% function for spike response during the time window align each trial
+%% for single neuron
+%% input
+% spk_time: the time points of every spikes from single neuron
+% params: input parameters, including: 
+% params.on_trig: the window onset time of each trial
+% params.off_trig: the window offset time of each trial
+% params.n_bin: the bins number of the time window
+% params.Fs: sampling rate
+
+%% output
+% Res.train: the spike train during the time window
+% Res.psth_trialBin: the spike PSTH of each trial during the time window
+% Res.psth_aveBin: the average spike PSTH of during the time window
+
+function [Res] = fun_spkRes_bin(spk_time, params)
+        on_trig = params.on_trig;
+        off_trig = params.off_trig;
+        n_trial= length(on_trig);
+        Fs = params.Fs;
+        n_bin = params.n_bin;
+
+        if n_trial ~= length(off_trig)
+            error('Wrong trigger!'); 
+        end 
+        binFs = off_trig- on_trig;     
+        binFs = ceil(binFs/n_bin)*n_bin;         
+
+        trainFs_all = cell(n_trial, 1);
+        psth_bin_trial = zeros(n_trial, n_bin);     
+        for jj = 1: n_trial            
+            psth_Fs = zeros(1, binFs(jj));                          
+            trainFs_raw = spk_time(spk_time>=on_trig(jj) & spk_time<off_trig(jj))-on_trig(jj);
+            if ~isempty(trainFs_raw)   
+                trainFs = floor(trainFs_raw)+1;  
+                psth_Fs(trainFs) = 1;    
+            end         
+            psth_reshape = reshape(psth_Fs, binsizeFs(jj), n_bin);
+            psth_bin_trial(jj,:) = sum(psth_reshape,1)/binsizeFs(jj)*Fs;  
+            trainFs_all{jj} = trainFs_raw;
+        end    
+        psth_bin_ave = mean(psth_bin_trial,1);     
+
+        Res.train = trainFs_all; 
+        Res.psth_trialBin = psth_bin_trial;
+        Res.psth_aveBin = psth_bin_ave;
+end

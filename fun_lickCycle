@@ -1,0 +1,62 @@
+%% function for spike response during the time window align each trial
+%% for single neuron
+%% input
+% lk_time: the time points of every licks 
+% spk_time: the time points of every spikes from single neuron
+% trig_on: each contact onset within lick bouts
+% Fs: sampling rate
+%% output
+% Output.isCorrelated: 1 mean spike is correlated with lick cyle, 0 means not.
+% Output.spkPsth_zscored: zscored spike psth during one lick cycle
+
+%% 
+function [Output] = fun_lickCycle(lk_time, spk_time, trig_on, Fs)
+        params.on_trig = trig_on - 0.25*Fs;
+        params.off_trig = trig_on + 0.25*Fs;
+        params.n_bin = (0.25+0.25)*1000/5;
+        params.Fs = Fs;
+        [lk_res] = fun_spkRes_bin(lk_time, params);
+        [spk_res] = fun_spkRes_bin(spk_time, params);
+        lkPsth_raw = lk_res.psth_aveBin;
+        spkPsth_raw = spk_res.psth_aveBin;
+        spk_train = spk_res.train;
+        clear lk_res spk_res        
+        
+        [lkPsth, lkPsth_CC] = fun_smoothPsth(lkPsth_raw);
+        [~, spkPsth_CC] = fun_smoothPsth(spkPsth_raw);   
+        spkPsth_CC90 = horzcat(flip(spkPsth_CC(end-3: end)), spkPsth_CC(1:end-4));        
+        [~, p_CC] = corrcoef(lkPsth_CC, spkPsth_CC);
+        [~, p_CC_90] = corrcoef(lkPsth_CC, spkPsth_CC90);  
+        
+        if p_CC < 0.05 || p_CC_90 < 0.05
+            [pks_lick, locs_lick] = findpeaks(lkPsth, 'Npeaks', 3, 'SortStr', 'descend');
+            if length(pks_lick) == 3
+                interval = 5* (max(locs_lick)- min(locs_lick))/2;  
+            else
+                fprintf("Abnormal lick psth");
+                return
+            end
+            Output.isCorrelated = 1;                                                                            
+            binsize = interval/36;  
+            edges = -interval-binsize*15: binsize: interval+binsize*15;     
+            spkPsth_adjust = zeros(length(spk_train), length(edges)-1);
+            for jj = 1: length(spk_train)
+                spkPsth_adjust(jj,:) = histcounts(spk_train{jj}/Fs*1000, edges);
+            end
+            spkPsth_adjust = mean(spkPsth_adjust,1);    
+            spkPsth_adjust = GaussianSmooth(spkPsth_adjust, 15,5);
+            Output.spkPsth_zscored = zscore(spkPsth_adjust);            
+        else
+            Output.isCorrelated = 0;
+            Output.spkPsth_zscored = [];
+        end               
+end
+
+%% other function
+function [psth_smoothed, psth_CC] = fun_smoothPsth(psth_raw)
+        psth_extend = [repmat(psth_raw(1),1,15), psth_raw, repmat(psth_raw(end),1,15)];
+        psth_smoothed = fun_GaussFilt(psth_extend, 15, 5);  
+        psth_smoothed = psth_smoothed(16:115);   
+        analysisPeriod = 11: 90;       
+        psth_CC = sum(reshape(psth_smoothed(analysisPeriod), 2, length(analysisPeriod)/ 2));  
+end

@@ -1,0 +1,90 @@
+%% function for classificaton of neuron activties in lick sequence
+%% for single neuron
+%% input
+% spk_time: the time points of every spikes from single neuron
+% bout_on: each lick sequence onset time
+% bout_off: each lick sequence offset time
+% Fs: sampling rate
+
+%% output
+% cellType: one type after classificaton
+
+%%
+function [cellType] = fun_classify_lickSeq(spk_time, bout_on, bout_off, Fs)
+        % spike response of each epoch
+        % -1~0.25 s，baseline+bout_on, baseline(-1~-0.5s), bout on(-0.5~0.25s)
+        params.on_trig = bout_on - 1*Fs;
+        params.off_trig = bout_on + 0.25*Fs;
+        params.n_bin = 50;  
+        params.Fs = Fs;
+        [Res] = fun_spkRes_bin(spk_time, params);
+        spk_base = Res.psth_aveBin(1:20);
+        spk_base = smooth(spk_base,5,'moving');
+        spk_on = Res.psth_aveBin(20+1: end);
+        spk_on = smooth(spk_on,5,'moving');  
+        clear Res params
+        
+        % bout sustain, 60 bins
+        params.on_trig = bout_on + 0.25*Fs;
+        params.off_trig = bout_off - 0.25*Fs;
+        params.n_bin = 60;
+        params.Fs = Fs;
+        [Res] = fun_spkRes_bin(spk_time, params);
+        spk_sus = smooth(Res.psth_aveBin, 5,'moving');
+        clear Res params
+                
+        % -0.25~0.5s，bout_off
+        params.on_trig = bout_off - 0.25*Fs;
+        params.off_trig = bout_off + 0.5*Fs;
+        params.n_bin = 30;  
+        params.Fs = Fs;
+        [Res] = fun_spkRes_bin(spk_time, params);
+        spk_off = smooth(Res.psth_aveBin, 5,'moving');
+        clear Res params
+        
+        % clssification
+        base_ave = mean(spk_base);
+        baseL = base_ave+3*std(spk_base);     
+        baseS = base_ave-3*std(spk_base);
+        sig_on = test_bin_ind(spk_on, baseL, baseS, 1/3);     
+        sig_sus = test_bin_ind(spk_sus, baseL, baseS, 1/3);     
+        sig_off = test_bin_ind(spk_off, baseL, baseS, 1/3);     
+
+        if sig_sus == -1
+            cellType = "inhibited";
+        elseif sig_sus == 1     
+            cellType = "sustain";    
+        elseif sig_on == 1 && sig_off == 1    
+            cellType = "boundary";    
+        elseif sig_on == -1     
+            cellType = "inhibited"; 
+        elseif sig_on == 1  
+            cellType = "start";
+        elseif sig_off == -1     
+            cellType = "inhibited"; 
+        elseif sig_off == 1 
+            cellType = "stop";  
+        else
+            cellType = "non-related";    
+        end
+end
+%% other function
+function test_sig = test_bin_ind(res_test, baseL, baseS, percent)
+    n_bin = length(res_test);
+    res_test_ind = zeros(1, n_bin);
+    res_test_ind(res_test>baseL) = 1;
+    res_test_ind(res_test<baseS) = -1; 
+    
+    n_binSig = percent*n_bin;
+    n_bin_serial = ones(1,ceil(n_binSig));  
+    positive = strfind(res_test_ind, n_bin_serial);   
+    negative = strfind(res_test_ind, -n_bin_serial);
+    
+    if ~isempty(positive)
+       test_sig = 1;
+    elseif ~isempty(negative)
+        test_sig = -1;
+    else
+        test_sig = 0;
+    end
+end

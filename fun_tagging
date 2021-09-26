@@ -1,0 +1,24 @@
+%% function for tagging analysis
+%% for single unit
+%% input
+% spk_off: spike rate of 1s before laser on
+% spk_on: spike rate of putative delay time (6 ms)  after laser on
+% wave_off: the waveform of the laser spike before laser on
+% wave_on: the waveform of the first spike after laser on
+%% output
+% tagged_unit: 1 for tagged cell, 0 for untagged cell
+
+%%
+function [tagged_unit] = fun_tagging(spk_off, spk_on, wave_off, wave_on)       
+        [~,p_ttest] = ttest(spk_off, spk_on);
+        if p_ttest < 0.01 && mean(spk_off) < mean(spk_on)
+            [CC_unit, p_CC_unit] = corrcoef(wave_off, wave_on);
+            if CC_unit(2)> 0.95 && p_CC_unit(2) < 0.05  % tagged cell
+                tagged_unit = 1;
+            else
+                tagged_unit = 0;
+            end
+        else
+            tagged_unit = 0;
+        end
+end
